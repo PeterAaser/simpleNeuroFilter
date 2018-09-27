@@ -9,14 +9,6 @@ import scala.io.Source
 
 object neuroHM {
 
-  def printMatrix(m: Matrix[FiniteDuration]): Unit = {
-    println(m.map(_.map(_.toMillis.toInt).mkString("\n["," ","]")).mkString(""))
-  }
-
-  def printPart(m: List[FiniteDuration], n: Int): Unit = {
-    println(m.take(n).map(_.toMillis.toInt).mkString("","ms ","ms"))
-  }
-
   type Matrix[A] = List[List[A]]
 
   def collectByTimestamp(
@@ -29,7 +21,7 @@ object neuroHM {
       viable.takeWhile(ts => (ts < (start + interval))),
       viable.dropWhile(ts => (ts < (start + interval))))
 
-    (a.map(x => x - start), b)
+    (a.map(x => x - start), viable)
   }
 
 
@@ -58,7 +50,7 @@ object neuroHM {
 
 
   def collectMatrix: Matrix[FiniteDuration] = {
-    Source.fromFile("/home/peter/Downloads/bigbig.csv").getLines
+    Source.fromFile("/home/peteraa/Downloads/bigbig.csv").getLines
       .filter(!_.isEmpty())
       .toList.tail
       .map(x => (x ++ "0").split(","))
@@ -77,9 +69,49 @@ object neuroHM {
       .map(_.flatten)
   }
 
+
+  def bucketByInterval(interval: FiniteDuration, bucketInterval: FiniteDuration): Matrix[FiniteDuration] => Matrix[Int] = {
+    val nBuckets = (interval/bucketInterval).toInt
+
+    def bucketChannel(channel: List[FiniteDuration]): List[Int] = {
+      val buckets = Array.ofDim[Int](nBuckets)
+      channel.map(x => (x/bucketInterval).toInt).foreach(idx => buckets(idx) = buckets(idx) + 1)
+      buckets.toList
+    }
+
+
+    matrix => matrix.map(bucketChannel)
+  }
+
+
+  def collapseSeries(interval: FiniteDuration, bucketInterval: FiniteDuration, series: List[Matrix[FiniteDuration]]): Matrix[Int] = {
+    val nBuckets = (interval/bucketInterval).toInt
+    val temp = Array.ofDim[Int](59, nBuckets)
+
+    series.map(bucketByInterval(interval, bucketInterval)).foreach { m =>
+      for(ii <- 0 until 59){
+        for(jj <- 0 until nBuckets){
+          temp(ii)(jj) = temp(ii)(jj) + m(ii)(jj)
+        }
+      }
+    }
+    temp.map(_.toList).toList
+  }
+
+
   def main(args: Array[String]): Unit = {
     val ins = collectMatrix
-    val testan = collectChannelMatrixes(Duration(5, MILLISECONDS), 0, ins)
-    printMatrix(testan.head)
+
+    val interval = Duration(5, MILLISECONDS)
+    val bucketInterval = Duration(1, MILLISECONDS)
+
+    println(s"With BucketSize: interval: ${interval.toMillis}ms, bucketSize: ${bucketInterval.toMillis}ms, channel: 0")
+    for(i <- 0 until 59){
+      println(s"channel $i")
+      val testan = collectChannelMatrixes(interval, i, ins)
+      val collapsed = collapseSeries(interval, bucketInterval, testan).transpose
+      val s = collapsed.map(_.map(x => f"${x}%4d")).map(_.mkString(",")).mkString("\n")
+      println(s)
+    }
   }
 }
