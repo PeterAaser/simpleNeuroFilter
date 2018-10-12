@@ -6,111 +6,114 @@ import org.joda.time.format.DateTimeFormat
 import scala.concurrent.duration._
 import scala.io.Source
 import cats.implicits._
+import fs2._
 
 import java.nio.file.{ Path, Paths }
 
 object main {
 
-
   type Matrix[A] = List[List[A]]
   type Channel = Int
   type SpikeT = Int
 
-
-
   // This ends up not being that much data, so it's OK
-  def readNeuroFile(filename: String): List[(Int, FiniteDuration)] = {
-    println(s"reading $filename")
-    Source.fromFile(filename).getLines
-      .filter(!_.isEmpty())
-      .toList.tail
-      .map(x => (x ++ "0").split(","))
-      .map(_.dropRight(1))
-      .map(_.map{ x =>
-             if(x.isEmpty()) None
-             else Some(x)
-           }
-             .map(_.map(_.stripMargin))
-             .map(_.map(_.toDouble))
-             .map(_.map(x => (x*1000*1000*1000).toLong))
-             .map(_.map(x => Duration(x, NANOSECONDS)))
-             .zipWithIndex
-             .map{ case (x,idx) => x.map(d => (idx, d)) }
-             .toList
-      )
-      .transpose
-      .flatMap(_.flatten)
-      .filterNot{ case(idx, ts) => idx >= 59 }
-      .sortBy(_._2)
-  }
 
-
-  def main(args: Array[String]): Unit = {
-
+  def notmain(args: Array[String]): Unit = {
 
     import fileIO._
     val recordings = getRecordingsMap
 
     import filters._
-    import frameFilter._
     import scala.io.AnsiColor._
-
-    // diseased
-    val mea8 = 8
-    val mea15 = 15
-    val mea16 = 16
-
-    // control
-    val mea2 = 2
-    val mea18 = 18
-    val mea13 = 13
-    val mea17 = 17
 
     val timeFormat = DateTimeFormat.forPattern("yyyy-MM-dd'T'HH-mm-ss")
     val AIDS_DAY = DateTime.parse("2017-09-11T00-00-00", timeFormat)
 
-    println("Insert MEA number\nDiseased:\t[8, 14(detached), 15, 16]\nContol:\t[2, 13, 17, 18]")
-    val mea = readLine("").toInt
-    println()
-    val bucketSize = readLine("How many milliseconds per interval?").toInt.millis
-    println()
-    val interval = readLine(s"Input interval. With input 5 the interval will be ${5*bucketSize}ms").toInt
+    import scala.collection.JavaConversions._
 
-    for(i <- 0 until 100)
-      println("########################")
+    import org.deeplearning4j.datasets.iterator._
+    import org.deeplearning4j.datasets.iterator.impl._
+    import org.deeplearning4j.nn.api._
+    import org.deeplearning4j.nn.multilayer._
+    import org.deeplearning4j.nn.graph._
+    import org.deeplearning4j.nn.conf._
+    import org.deeplearning4j.nn.conf.inputs._
+    import org.deeplearning4j.nn.conf.layers._
+    import org.deeplearning4j.nn.weights._
+    import org.deeplearning4j.optimize.listeners._
+    import org.deeplearning4j.datasets.datavec.RecordReaderMultiDataSetIterator
+    import org.deeplearning4j.eval.Evaluation
 
-    recordings(mea).map(x => (x._1, x._2.toString())) foreach { case(t, recording) =>
+    import org.nd4j.linalg.learning.config._ // for different updaters like Adam, Nesterovs, etc.
+    import org.nd4j.linalg.activations.Activation // defines different activation functions like RELU, SOFTMAX, etc.
+    import org.nd4j.linalg.lossfunctions.LossFunctions // mean squared error, multiclass cross entropy, etc.
 
-      if(AIDS_DAY isBefore t){
-        println(s"${scala.io.AnsiColor.RED_B}---------------------------------------")
-        println(s"${scala.io.AnsiColor.RED_B}---------------------------------------")
-        println(s"${scala.io.AnsiColor.RED_B}---------------------------------------")
-        println(s"${scala.io.AnsiColor.RED_B}---------------------------------------")
-        println(s"${scala.io.AnsiColor.RESET}")
-      }
-      else{
-        println("---------------------------------------")
-        println("---------------------------------------")
-        println("---------------------------------------")
-        println("---------------------------------------")
-      }
+    import org.deeplearning4j.datasets.iterator.impl.EmnistDataSetIterator
 
-      val huh: Stream[Pure,(Int,FiniteDuration)] = Pull.output(Segment.seq(readNeuroFile(recording))).stream
+    val batchSize = 16 // how many examples to simultaneously train in the network
+    val emnistSet = EmnistDataSetIterator.Set.BALANCED
+    val emnistTrain = new EmnistDataSetIterator(emnistSet, batchSize, true)
+    val emnistTest = new EmnistDataSetIterator(emnistSet, batchSize, false)
 
-      val monthString = t.toString("MMM")
-      println(s"${t.getDayOfMonth} $monthString:")
+    val outputNum = EmnistDataSetIterator.numLabels(emnistSet) // total output classes
+    val rngSeed = 123 // integer for reproducability of a random number generator
+    val numRows = 28 // number of "pixel rows" in an mnist digit
+    val numColumns = 28
 
-      val what = huh
-        .through(applyBucketing(bucketSize))
-        .through(toFrames).chunkLimit(1024).flatMap(Stream.chunk)
-        .through(toSteps)
-        .through(foldFrames(interval)).toList.head
+    println(s"outputNum, $outputNum")
 
-      what.foreach { w =>
-        println(w.map(x => toHeat(x, 3)).transpose.map(_.map(printPercentageColor).mkString).mkString("\n"))
-        println(s"${RESET}\n")
-      }
+    val conf = new NeuralNetConfiguration.Builder()
+      .seed(rngSeed)
+      .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
+      .updater(new Adam())
+      .l2(1e-4)
+      .list()
+      .layer(new DenseLayer.Builder()
+               .nIn(numRows * numColumns) // Number of input datapoints.
+               .nOut(1000) // Number of output datapoints.
+               .activation(Activation.RELU) // Activation function.
+               .weightInit(WeightInit.XAVIER) // Weight initialization.
+               .build())
+      .layer(new OutputLayer.Builder(LossFunctions.LossFunction.NEGATIVELOGLIKELIHOOD)
+               .nIn(1000)
+               .nOut(outputNum)
+               .activation(Activation.SOFTMAX)
+               .weightInit(WeightInit.XAVIER)
+               .build())
+      .pretrain(false).backprop(true)
+      .build()
 
-    }
+    // create the MLN
+    val network = new MultiLayerNetwork(conf)
+    network.init()
+
+    // pass a training listener that reports score every 10 iterations
+    val eachIterations = 5
+    network.addListeners(new ScoreIterationListener(eachIterations))
+
+    // fit a dataset for a single epoch
+    network.fit(emnistTrain)
+
+    // fit for multiple epochs
+    // val numEpochs = 2
+    // network.fit(new MultipleEpochsIterator(numEpochs, emnistTrain)
+
+    val eval = network.evaluate(emnistTest)
+    println(s"accuracy: ${eval.accuracy()}")
+    println(s"precision: ${eval.precision()}")
+    println(s"recall: ${eval.recall()}")
+    eval.precision()
+    eval.recall()
+
+    // evaluate ROC and calculate the Area Under Curve
+    val roc = network.evaluateROCMultiClass(emnistTest)
+
+    roc.calculateAverageAUC()
+
+    val classIndex = 0
+    roc.calculateAUC(classIndex)
+
+    print(eval.stats())
+    print(roc.stats())
   }
 }

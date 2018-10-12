@@ -31,7 +31,6 @@ object fileIO {
     val month = filenameDateString.drop(5).take(2).toInt
     val ts = DateTime.parse(filenameDateString.takeWhile(x => x != 'M'), fsTimeFormat)
     val ts2 = ts.withMonthOfYear(month)
-    println(s"from ${filenameDateString.takeWhile(x => x != 'M')} I got\t$ts")
     ts2
 
   }
@@ -55,5 +54,37 @@ object fileIO {
     val huh = getRecordings.groupBy(_._2).toList
     val hur = huh.map(x => (x._1, x._2.sortBy(_._1).map(x => (x._1, x._3))))
     hur.toMap
+  }
+
+
+  def readNeuroFile(filename: String): List[(Int, FiniteDuration)] = {
+    println(s"reading $filename")
+    scala.io.Source.fromFile(filename).getLines
+      .filter(!_.isEmpty())
+      .toList.tail
+      .map(x => (x ++ "0").split(","))
+      .map(_.dropRight(1))
+      .map(_.map{ x =>
+             if(x.isEmpty()) None
+             else Some(x)
+           }
+             .map(_.map(_.stripMargin))
+             .map(_.map(_.toDouble))
+             .map(_.map(x => (x*1000*1000*1000).toLong))
+             .map(_.map(x => Duration(x, NANOSECONDS)))
+             .zipWithIndex
+             .map{ case (x,idx) => x.map(d => (idx, d)) }
+             .toList
+      )
+      .transpose
+      .flatMap(_.flatten)
+      .filterNot{ case(idx, ts) => idx >= 59 }
+      .sortBy(_._2)
+  }
+
+
+  def say(word: Any)(implicit filename: sourcecode.File, line: sourcecode.Line): Unit = {
+    val fname = filename.value.split("/").last
+    println(Console.YELLOW + s"[${fname}: ${sourcecode.Line()}]" + Console.RESET + s" - $word")
   }
 }

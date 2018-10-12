@@ -1,4 +1,6 @@
 #SBT
+.ensime
+.ensime_cache
 target
 
 # Mac

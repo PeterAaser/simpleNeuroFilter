@@ -6,7 +6,6 @@ object Dependencies {
 
   val fs2Version = "0.10.4"
   val http4sVersion = "0.18.0"
-  val circeVersion = "0.9.1"
   val catsVersion = "1.1.0"
   val catsEffectVersion = "0.10"
 
@@ -14,22 +13,29 @@ object Dependencies {
   val ScalaRxVersion = "0.3.2"
   val jqueryVersion = "3.2.1"
 
+  val dl4jVersion = "1.0.0-beta2"
+
   // Dependencies for JVM part of code
   val backendDeps = Def.setting(
     Seq(
-      "com.lihaoyi" %% "sourcecode" % "0.1.4",                      // expert println debugging
-      "com.lihaoyi" %% "pprint" % "0.5.3",                          // pretty print for types and case classes
-      "org.typelevel" %% "cats-core" % catsVersion,                 // abstract category dork stuff
+      "com.lihaoyi" %% "sourcecode" % "0.1.4",               // expert println debugging
+      "com.lihaoyi" %% "pprint" % "0.5.3",                   // pretty print for types and case classes
+      "org.typelevel" %% "cats-core" % catsVersion,          // abstract category dork stuff
 
-      "com.chuusai" %% "shapeless" % "2.3.2",                   // Abstract level category dork stuff
+      "com.chuusai" %% "shapeless" % "2.3.2",                // Abstract level category dork stuff
 
       "joda-time" % "joda-time" % "2.9.9",
       "org.joda" % "joda-convert" % "2.0.1",
 
-      "org.typelevel" %% "cats-effect" % catsEffectVersion,     // IO monad category wank
+      "org.typelevel" %% "cats-effect" % catsEffectVersion,  // IO monad category wank
 
-      "co.fs2" %% "fs2-core" % fs2Version,                      // The best library
-      "co.fs2" %% "fs2-io"   % fs2Version,                      // The best library
+      "co.fs2" %% "fs2-core" % fs2Version,                   // The best library
+      "co.fs2" %% "fs2-io"   % fs2Version,                   // The best library
+
+      "org.deeplearning4j" % "deeplearning4j-core" % dl4jVersion,
+      "org.nd4j" % "nd4j-native-platform" % dl4jVersion,
+      "org.nd4j" % "nd4j-api" % dl4jVersion,
+      "org.slf4j" % "slf4j-simple" % "1.6.4"
 
       ))
 }
